@@ -904,83 +904,83 @@ void RollingGuidedNormalFiltering::updateFilteredNormalsGlobalScheme(TriMesh &me
 /*this function launch the GPU acceration
 frist it copy the data needed to device
 then get result and write back to host */
-void RollingGuidedNormalFiltering::gpuUpdateFilteredNormals(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals)
-{
-	//get parameter
-	int iteration_number;
-	if (!parameter_set_->getValue(QString("Iteration Num."), iteration_number))
-		return;
-	double sigma_s;
-	if (!parameter_set_->getValue(QString("Multiple(* sigma_s)"), sigma_s))
-		return;
-	double sigma_r;
-	if (!parameter_set_->getValue(QString("Multiple(* sigma_r)"), sigma_r))
-		return;
-
-	/*TO TEST THE CUDA CALL HERE*/
-	std::vector<double> all_face_area;
-	getFaceArea(mesh, all_face_area);
-
-	std::vector<TriMesh::Normal> all_face_normal;
-	getFaceNormal(mesh, all_face_normal);
-
-	std::vector<TriMesh::Point> face_centriod;
-	getFaceCentroid(mesh, face_centriod);
-
-	TriMesh::Normal *filtered_normals_ptr = NULL;
-
-	double mean_edge_length = 0.0;
-	getGlobalMeanEdgeLength(mesh, mean_edge_length);
-	//pass the data to from host to device
-	getData(&face_centriod[0], &all_face_normal[0], &all_face_area[0], mesh.n_faces(), 
-		&filtered_normals_ptr, (sigma_s * mean_edge_length), sigma_r, iteration_number);
-
-	if (filtered_normals_ptr == NULL)
-	{
-		//something erro happend here
-		std::cout << "ptr is null erro" << std::endl;
-	}
-	else {
-
-		//copy array filtered_normal form device to host
-		std::vector<TriMesh::Normal> _filtered_normals;
-		filtered_normals.reserve(mesh.n_faces());
-		filtered_normals.resize(mesh.n_faces());
-		filtered_normals.assign(&filtered_normals_ptr[0], &filtered_normals_ptr[mesh.n_faces()]);
-		data_manager_->setFilteredNormal(filtered_normals);
-	}
-	/*END TEST THE CUDA CALL HERE*/
-}
-
-void RollingGuidedNormalFiltering::gpuUpdateVertex(TriMesh & mesh, std::vector<TriMesh::Normal>& filtered_normals)
-{
-	std::vector<TriMesh::Point> all_centroid;
-	getFaceCentroid(mesh, all_centroid);
-	std::vector<TriMesh::Point> all_vertex(mesh.n_vertices(), TriMesh::Point(0.0, 0.0, 0.0));
-	for (TriMesh::VertexIter v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
-	{
-		all_vertex.at(v_it->idx()) = mesh.point(v_it);
-	}
-
-	std::vector<double> all_face_area;
-	getFaceArea(mesh, all_face_area);
-
-	TriMesh::Point *new_points = NULL;
-	//注意 new_point 的值不能为空
-	double sigma_s;
-	double sigma_r;
-	double mean_edge_len;
-	getGlobalMeanEdgeLength(mesh, mean_edge_len);
-	parameter_set_->getValue(QString("Multiple(* sigma_s)"), sigma_s);
-	parameter_set_->getValue(QString("Multiple(* sigma_r)"), sigma_r);
-
-	//updateVertexGlobal(all_centroid, all_vertex, all_face_area, filtered_normals, &new_points, sigma_s * mean_edge_len, sigma_r);
-
-	for (TriMesh::VertexIter v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
-	{
-		mesh.set_point(v_it, new_points[v_it->idx()]);
-	}
-}
+//void RollingGuidedNormalFiltering::gpuUpdateFilteredNormals(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals)
+//{
+//	//get parameter
+//	int iteration_number;
+//	if (!parameter_set_->getValue(QString("Iteration Num."), iteration_number))
+//		return;
+//	double sigma_s;
+//	if (!parameter_set_->getValue(QString("Multiple(* sigma_s)"), sigma_s))
+//		return;
+//	double sigma_r;
+//	if (!parameter_set_->getValue(QString("Multiple(* sigma_r)"), sigma_r))
+//		return;
+//
+//	/*TO TEST THE CUDA CALL HERE*/
+//	std::vector<double> all_face_area;
+//	getFaceArea(mesh, all_face_area);
+//
+//	std::vector<TriMesh::Normal> all_face_normal;
+//	getFaceNormal(mesh, all_face_normal);
+//
+//	std::vector<TriMesh::Point> face_centriod;
+//	getFaceCentroid(mesh, face_centriod);
+//
+//	TriMesh::Normal *filtered_normals_ptr = NULL;
+//
+//	double mean_edge_length = 0.0;
+//	getGlobalMeanEdgeLength(mesh, mean_edge_length);
+//	//pass the data to from host to device
+//	getData(&face_centriod[0], &all_face_normal[0], &all_face_area[0], mesh.n_faces(), 
+//		&filtered_normals_ptr, (sigma_s * mean_edge_length), sigma_r, iteration_number);
+//
+//	if (filtered_normals_ptr == NULL)
+//	{
+//		//something erro happend here
+//		std::cout << "ptr is null erro" << std::endl;
+//	}
+//	else {
+//
+//		//copy array filtered_normal form device to host
+//		std::vector<TriMesh::Normal> _filtered_normals;
+//		filtered_normals.reserve(mesh.n_faces());
+//		filtered_normals.resize(mesh.n_faces());
+//		filtered_normals.assign(&filtered_normals_ptr[0], &filtered_normals_ptr[mesh.n_faces()]);
+//		data_manager_->setFilteredNormal(filtered_normals);
+//	}
+//	/*END TEST THE CUDA CALL HERE*/
+//}
+//
+//void RollingGuidedNormalFiltering::gpuUpdateVertex(TriMesh & mesh, std::vector<TriMesh::Normal>& filtered_normals)
+//{
+//	std::vector<TriMesh::Point> all_centroid;
+//	getFaceCentroid(mesh, all_centroid);
+//	std::vector<TriMesh::Point> all_vertex(mesh.n_vertices(), TriMesh::Point(0.0, 0.0, 0.0));
+//	for (TriMesh::VertexIter v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
+//	{
+//		all_vertex.at(v_it->idx()) = mesh.point(v_it);
+//	}
+//
+//	std::vector<double> all_face_area;
+//	getFaceArea(mesh, all_face_area);
+//
+//	TriMesh::Point *new_points = NULL;
+//	//注意 new_point 的值不能为空
+//	double sigma_s;
+//	double sigma_r;
+//	double mean_edge_len;
+//	getGlobalMeanEdgeLength(mesh, mean_edge_len);
+//	parameter_set_->getValue(QString("Multiple(* sigma_s)"), sigma_s);
+//	parameter_set_->getValue(QString("Multiple(* sigma_r)"), sigma_r);
+//
+//	//updateVertexGlobal(all_centroid, all_vertex, all_face_area, filtered_normals, &new_points, sigma_s * mean_edge_len, sigma_r);
+//
+//	for (TriMesh::VertexIter v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
+//	{
+//		mesh.set_point(v_it, new_points[v_it->idx()]);
+//	}
+//}
 
 double RollingGuidedNormalFiltering::getRollingMeanSqureAngleErro(const TriMesh &mesh, std::vector<TriMesh::Normal>& filtered_normals)
 {

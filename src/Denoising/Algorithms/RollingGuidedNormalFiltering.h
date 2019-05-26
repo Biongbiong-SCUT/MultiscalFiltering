@@ -42,8 +42,8 @@ private:
     void updateFilteredNormalsGlobalScheme(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals);
 
 	// GPU speed up
-	void gpuUpdateFilteredNormals(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals);
-	void gpuUpdateVertex(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals);
+	//void gpuUpdateFilteredNormals(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals);
+	//void gpuUpdateVertex(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals);
 
 	//get laplacian rtv
 	void getGradientNormal(TriMesh &mesh, const std::vector<TriMesh::Normal> &all_face_normal, std::vector<TriMesh::Normal> &gradient_normal)
@@ -110,15 +110,15 @@ private:
 
 }; 
 
-
-extern "C" void
-getData(TriMesh::Point *all_centriod, TriMesh::Normal *all_face_normal, double *all_face_area,
-	unsigned int num, TriMesh::Normal **filtered_ptr, double sigma_s, double sigma_r, int iter);
-extern "C" void
-updateVertexGlobal(std::vector <TriMesh::Point> all_centriod,
-	std::vector<TriMesh::Point> all_vertex, std::vector<double> all_face_area,
-	std::vector<TriMesh::Normal> filtered_normal,
-	TriMesh::Point **new_points, double sigma_s, double sigma_r);
+//GPU
+//extern "C" void
+//getData(TriMesh::Point *all_centriod, TriMesh::Normal *all_face_normal, double *all_face_area,
+//	unsigned int num, TriMesh::Normal **filtered_ptr, double sigma_s, double sigma_r, int iter);
+//extern "C" void
+//updateVertexGlobal(std::vector <TriMesh::Point> all_centriod,
+//	std::vector<TriMesh::Point> all_vertex, std::vector<double> all_face_area,
+//	std::vector<TriMesh::Normal> filtered_normal,
+//	TriMesh::Point **new_points, double sigma_s, double sigma_r);
 
 
 #endif // ROLLINGGUIDEDNORMALFILTERING_H
