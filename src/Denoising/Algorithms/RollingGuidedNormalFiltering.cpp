@@ -124,11 +124,11 @@ void RollingGuidedNormalFiltering::denoise()
 	
 
 
-	data_manager_->getFilteredNormals(filtered_normal);
-	if (filtered_normal.empty())
-	{
+	//data_manager_->getFilteredNormals(filtered_normal);
+	//if (filtered_normal.empty())
+	//{
 		updateFilteredNormals(mesh, filtered_normal);
-	}
+	//}
 
 
 
@@ -417,7 +417,7 @@ void RollingGuidedNormalFiltering::updateVertexPositionWithWeight(TriMesh & mesh
 	qDebug() << "lambda : " << lambda;
 	qDebug() << "threshold : " << threshold;
 	double sigma = 0.0;
-	
+
 
 
 	std::vector<TriMesh::Point> new_points(mesh.n_vertices());
@@ -467,6 +467,11 @@ void RollingGuidedNormalFiltering::updateVertexPositionWithWeight(TriMesh & mesh
 
 	std::vector<double> change_list(mesh.n_faces());
 	std::vector<double> var_list(mesh.n_faces());
+	std::vector<TriMesh::Normal> gradient_normal;
+	std::vector<TriMesh::Normal> filtered_gradient_normal;
+	getGradientNormal(mesh, all_face_normal, gradient_normal);
+	getGradientNormal(mesh, filtered_normals, filtered_gradient_normal);
+
 	for (TriMesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); f_it++)
 	{
 		double point_constrain = 0.0;
@@ -480,44 +485,85 @@ void RollingGuidedNormalFiltering::updateVertexPositionWithWeight(TriMesh & mesh
 		std::vector<double> dists2; // all_face_neighbor_dist[index_i];
 		annSearchFaceNeighor(ci, VsqRad, idxs2, dists2);
 
+		TriMesh::Normal no_i = all_face_normal[f_it->idx()];
 		// lambda_1
+		TriMesh::Normal rtv = TriMesh::Normal(0.0, 0.0, 0.0);
 		double area_sum = 0.0;
+		double x=0.0, y=0.0, z=0.0;
 		for (int i = 0; i < int(idxs.size()); i++)
 		{
-			TriMesh::Normal no_jk = all_face_normal[idxs[i]];
-			TriMesh::Normal nr_jk = filtered_normals[idxs[i]];
-			double curr_area = all_face_area[idxs[i]];
-			point_constrain += curr_area * (pow(((no_jk - nr_jk).length()), 2));
-			area_sum += curr_area;
-
+			//TriMesh::Normal no_jk = all_face_normal[idxs[i]];
+			//TriMesh::Normal nr_jk = filtered_normals[idxs[i]];
+			//double curr_area = all_face_area[idxs[i]];
+			//point_constrain += curr_area * (pow(((no_jk - nr_jk).length()), 2));
+			//area_sum += curr_area;
+			double spatial_distance = dists[i];
+			//printf("(%d,%d)", spatial_distance, spatial_distances);
+			double g = GaussianWeight(spatial_distance, mean_edge_length * 3);
+			TriMesh::Normal no_jk = gradient_normal[idxs[i]];// -no_i;
+			rtv += g * no_jk;
+			x += g * pow(abs(no_jk[0]),2);
+			y += g * pow(abs(no_jk[1]),2);
+			z += g * pow(abs(no_jk[2]),2);
 		}
-		point_constrain /= area_sum;
+		double epsilon = 10e-8;
+		point_constrain = x + y + z;
+		//point_constrain = pow(x,2) + pow(y,2) + pow(z,2);//x / (abs(rtv[0]) + epsilon) + y / (abs(rtv[1]) + epsilon) + z / (abs(rtv[2]) + epsilon);
+		point_constrain /= int(idxs.size());
 
 		// lambda_2
 		double point_large = 0.0;
 		TriMesh::Normal mean_normal = TriMesh::Normal(0.0, 0.0, 0.0);
 		double normalizer = 0.0;
 		double var = 0.0;
-		area_sum = 0.0;
-		for (int i = 0; i < int(idxs2.size()); i++)
-		{
-			double curr_area = all_face_area[idxs2[i]];
-			TriMesh::Normal nr_jk = filtered_normals[idxs2[i]];
-			mean_normal += curr_area * nr_jk;
-			//normalizer += curr_area * nr_jk.length();
-		}
-		mean_normal = mean_normal.normalize();
-		if (mean_normal.length() - 1 > 10e-5)
-			qDebug() << "mean_normal len: " << mean_normal.length();
-		for (int i = 0; i < int(idxs2.size()); i++)
-		{
-			TriMesh::Normal nr_jk = filtered_normals[idxs2[i]];
-			double curr_area = all_face_area[idxs2[i]];
-			var += curr_area * pow((nr_jk - mean_normal).length(), 2);
-			area_sum += curr_area;
-		}
-		var /= area_sum;
+		var = getCovariance(idxs2, dists2, all_face_area, filtered_normals, mean_edge_length * 3);
+		//double xx = 0.0, yy = 0.0, zz = 0.0;
+		//for (int i = 0; i < int(idxs2.size()); i++)
+		//{
+		//	//TriMesh::Normal no_jk = all_face_normal[idxs[i]];
+		//	//TriMesh::Normal nr_jk = filtered_normals[idxs[i]];
+		//	//double curr_area = all_face_area[idxs[i]];
+		//	//point_constrain += curr_area * (pow(((no_jk - nr_jk).length()), 2));
+		//	//area_sum += curr_area;
+		//	double spatial_distance = dists2[i];
+		//	//printf("(%d,%d)", spatial_distance, spatial_distances);
+		//	double g = GaussianWeight(spatial_distance, mean_edge_length * 3);
+		//	TriMesh::Normal no_jk = filtered_gradient_normal[idxs2[i]];// -no_i;
+		//	rtv += g * no_jk;
+		//	xx += g * pow(abs(no_jk[0]), 2);
+		//	yy += g * pow(abs(no_jk[1]), 2);
+		//	zz += g * pow(abs(no_jk[2]), 2);
+		//}
+		//var = xx + yy + zz;
+		//var /= int(idxs2.size());
+
+		//area_sum = 0.0;
+		//for (int i = 0; i < int(idxs2.size()); i++)
+		//{
+		//	double curr_area = all_face_area[idxs2[i]];
+		//	TriMesh::Normal nr_jk = filtered_normals[idxs2[i]];
+		//	mean_normal += curr_area * nr_jk;
+		//	//normalizer += curr_area * nr_jk.length();
+		//}
+		//mean_normal = mean_normal.normalize();
+		//if (mean_normal.length() - 1 > 10e-5)
+		//	qDebug() << "mean_normal len: " << mean_normal.length();
+		//for (int i = 0; i < int(idxs2.size()); i++)
+		//{
+		//	TriMesh::Normal nr_jk = filtered_normals[idxs2[i]];
+		//	double curr_area = all_face_area[idxs2[i]];
+		//	double spatial_distance = dists2[i];
+		//	//printf("(%d,%d)", spatial_distance, spatial_distances);
+		//	double g = GaussianWeight(spatial_distance, mean_edge_length * 3);
+		//	//var += curr_area * pow((filtered_normals[f_it->idx()] - nr_jk).length(), 2);
+		//	var += pow((mean_normal - nr_jk).length(), 2);
+		//	//area_sum += curr_area;
+		//}
+		//var /= (idxs2.size() - 1);
+
 		var_list.at(f_it->idx()) = var;
+		//abs(gradient_normal[f_it->idx()][0]) + abs(gradient_normal[f_it->idx()][1]) + abs(gradient_normal[f_it->idx()][2]);
+		// var_list.at(f_it->idx()) = var;
 		change_list.at(f_it->idx()) = point_constrain;
 
 		// compute min max
@@ -531,6 +577,7 @@ void RollingGuidedNormalFiltering::updateVertexPositionWithWeight(TriMesh & mesh
 			change_min = point_constrain;
 
 		point_weights.at(f_it->idx()) = point_constrain;
+		
 	}
 
 	std::ofstream changeTxt("change.txt");
@@ -556,11 +603,12 @@ void RollingGuidedNormalFiltering::updateVertexPositionWithWeight(TriMesh & mesh
 
 	for (TriMesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); f_it++) {
 
-		double lambda_1 = (change_list.at(f_it->idx())) * 10 / change_range;
-		double lambda_2 = (var_list.at(f_it->idx())) * 10 / var_range;
-		double response = sigmoid_coeff * (delta * pow(lambda_2, 2) - k * pow(lambda_1, 2));
+		double lambda_1 = (change_list.at(f_it->idx())); // *10 / change_range;
+		double lambda_2 = (var_list.at(f_it->idx()));	// *10 / var_range;
+		//double response = sigmoid_coeff * (delta * pow(lambda_2, 2) - k * pow(lambda_1, 2));
+		double response = sigmoid_coeff * (delta * lambda_2 - (k * lambda_1));
 		values.at(f_it->idx()) = 1 / (1 + exp(-response));
-		
+		//values.at(f_it->idx()) = change_list.at(f_it->idx());
 		if (max < response)
 			max = response;
 		if (min > response)
@@ -680,11 +728,11 @@ void RollingGuidedNormalFiltering::updateFilteredNormalsLocalScheme(TriMesh &mes
 	int iteration_number;
 	if (!parameter_set_->getValue(QString("Iteration Num."), iteration_number))
 		return;
-	if (iteration_number == 0)
-	{
-		getFaceNormal(data_manager_->getOriginalMesh(), filtered_normals);
-		return;
-	}
+	//if (iteration_number == 0)
+	//{
+	//	getFaceNormal(data_manager_->getOriginalMesh(), filtered_normals);
+	//	return;
+	//}
 
 	double sigma_s;
 	if (!parameter_set_->getValue(QString("Multiple(* sigma_s)"), sigma_s))
@@ -717,7 +765,10 @@ void RollingGuidedNormalFiltering::updateFilteredNormalsLocalScheme(TriMesh &mes
 
 	for (int k = 0; k < iteration_number; k++)
 	{
+		std::vector<double> tempature(mesh.n_faces(), 0.0);
 		std::vector<TriMesh::Normal> temp_normals = std::vector<TriMesh::Normal>(mesh.n_faces(), TriMesh::Normal(0.0, 0.0, 0.0));
+		std::vector<TriMesh::Normal> gradient_normal;
+		getGradientNormal(mesh, filtered_normals, gradient_normal);
 		for (TriMesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); f_it++)
 		{
 
@@ -732,10 +783,27 @@ void RollingGuidedNormalFiltering::updateFilteredNormalsLocalScheme(TriMesh &mes
 			double sqRad = radius * radius;
 			annSearchFaceNeighor(ci, sqRad, idxs, dists);
 
-			//         compute ni_k
+			// get sigma tempature
+			//TriMesh::Normal rtv = TriMesh::Normal(0.0, 0.0, 0.0);
+			//double x = 0.0, y = 0.0, z = 0.0;
+			//for (int j = 0; j < (int)idxs.size(); j++)
+			//{
+			//	double spatial_distance = dists[j];
+			//	//printf("(%d,%d)", spatial_distance, spatial_distances);
+			//	double g = GaussianWeight(spatial_distance, mean_edge_length * 3);
+			//	TriMesh::Normal no_jk = gradient_normal[idxs[j]];// -no_i;
+			//	rtv += g * no_jk;
+			//	x += g * pow(abs(no_jk[0]), 2);
+			//	y += g * pow(abs(no_jk[1]), 2);
+			//	z += g * pow(abs(no_jk[2]), 2);
+			//}
+
+			//tempature.at(f_it->idx()) = (x + y + z) / idxs.size();
+
+			// compute ni_k
 			double weight_sum = 0.0;
-			//         get le
-			//         getLocalMeanEdgeLength(mesh, face_neighbor, mean_edge_length);
+			// get le
+			// getLocalMeanEdgeLength(mesh, face_neighbor, mean_edge_length);
 			for (int j = 0; j < (int)idxs.size(); j++)
 			{
 				int index_j = idxs[j];
@@ -746,7 +814,7 @@ void RollingGuidedNormalFiltering::updateFilteredNormalsLocalScheme(TriMesh &mes
 				double spatial_distance = dists[j];
 				//printf("(%d,%d)", spatial_distance, spatial_distances);
 				double spatial_weight = GaussianWeight(spatial_distance, sigma_s * mean_edge_length);
-				double range_distance = (ni_k - nj_k).length() * (ni_k-nj_k).length();
+				double range_distance = (ni_k - nj).length() * (ni_k - nj).length();
 				//double range_distance = 0.0;
 				double range_weight = GaussianWeight(range_distance, sigma_r);
 				double face_area = all_face_area[index_j];
@@ -754,7 +822,7 @@ void RollingGuidedNormalFiltering::updateFilteredNormalsLocalScheme(TriMesh &mes
 				weight_sum += weight;
 				n_temp += weight * nj;
 			}
-			//         update temp_normals
+			// update temp_normals
 			n_temp /= weight_sum;
 		    n_temp.normalize();
 			temp_normals[index_i] = n_temp;

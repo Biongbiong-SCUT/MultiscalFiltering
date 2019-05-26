@@ -319,8 +319,8 @@ protected:
 			}
 		}
 
-		//std::cout << "n_neighbor_pairs:" << n_neighbor_pairs << std::endl;
-		//std::cout << "Average neighborhood size: " << 2.0 * n_neighbor_pairs / n_faces << std::endl;
+		std::cout << "n_neighbor_pairs:" << n_neighbor_pairs << std::endl;
+		std::cout << "Average neighborhood size: " << 2.0 * n_neighbor_pairs / n_faces << std::endl;
 
 		return n_neighbor_pairs > Eigen::Index(0);
 	}

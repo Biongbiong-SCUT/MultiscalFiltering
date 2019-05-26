@@ -8,6 +8,8 @@
 #include "ANN/ANN.h"
 #include "Algorithms\SDFilter\EigenTypes.h"
 
+#include <algorithm>
+
 // Linear system solver
 using namespace SDFilter;
 class LinearSolver
@@ -137,7 +139,172 @@ public:
 	}
 	void updateFilteredNormals(TriMesh &mesh, std::vector<TriMesh::Normal> &filtered_normals);
 	void getGlobalMeanEdgeLength(TriMesh &mesh, double& mean_edge_length);
+	// covariance 
+	double getCovariance(const std::vector<int>& idxs2, const std::vector<double>& dists, const std::vector<double>& all_face_area, const std::vector<TriMesh::Normal> &normals, double gaussian);
+	void initSigma(TriMesh &mesh, double radius, std::vector<double> &sigma_s, std::vector<double> &sigma_r, double original_sigmas, double original_sigmar)
+	{
 
+		Timer timer;
+		Timer::EventID start_init = timer.get_time();
+		std::vector<TriMesh::Normal> g_normal;
+		std::vector<TriMesh::Normal> all_face_normals;
+		std::vector<TriMesh::Point> all_face_centorids;
+		getFaceNormal(mesh, all_face_normals);
+		getFaceCentroid(mesh, all_face_centorids);
+		getLaplacianNormal(mesh, all_face_normals, g_normal);
+		sigma_s.resize(mesh.n_faces());
+		sigma_r.resize(mesh.n_faces());
+
+		double min = +10e8;
+		double max = -10e8;
+		double Ave_size = 0.0;
+		radius = pow(original_sigmas, 2);
+
+		std::cout << "procs num " << omp_get_num_procs() << std::endl;; //获取执行核的数量
+		std::cout << "max threads " << omp_get_max_threads() << std::endl;; //获取执行核的数量
+		
+
+		Timer::EventID start_RTV = timer.get_time();
+		//#pragma omp parallel for reduction(+:Ave_size)
+		for (int index = 0; index < int(all_face_centorids.size()); index++)
+		{
+			//TriMesh::Normal rtv = TriMesh::Normal(0.0, 0.0, 0.0);
+			TriMesh::Point ci = all_face_centorids.at(index);
+			std::vector<int> idxs; // all_face_neighbor_idx[index_i];
+			std::vector<double> dists; // all_face_neighbor_dist[index_i];
+			//#pragma omp critical
+			{
+				annSearchFaceNeighor(ci, radius, idxs, dists);
+			}
+
+			double x = 0.0, y = 0.0, z = 0.0;
+			double normalizer = 0.0;
+			for (int i = 0; i < int(idxs.size()); i++)
+			{
+				double spatial_distance = dists[i];
+				double g = GaussianWeight(spatial_distance, radius);
+				TriMesh::Normal no_jk = g_normal[idxs[i]];// -no_i;
+				x += g * pow(abs(no_jk[0]), 2);
+				y += g * pow(abs(no_jk[1]), 2);
+				z += g * pow(abs(no_jk[2]), 2);
+				normalizer += g;
+			}
+
+			//pragma omp critical
+			{
+				if (min > (x + y + z) / normalizer)
+				{
+					min = (x + y + z) / normalizer;
+				}
+				if (max < (x + y + z) / normalizer)
+				{
+					max = (x + y + z) / normalizer;
+				}
+			}
+			sigma_s.at(index) = (x + y + z) / normalizer;
+			sigma_r.at(index) = (x + y + z) / normalizer;
+			Ave_size += idxs.size();
+		}
+
+		int coeff = 0;
+		double k = 0.0;
+		parameter_set_->getValue("K", k);
+		parameter_set_->getValue("Response", coeff);
+		std::cout << "response " << coeff << std::endl;
+		std::cout << "K " << k << std::endl;
+		std::cout << "Region Diff max: " << max << "Regin Diff min: " << min << std::endl;
+
+		Timer::EventID start = timer.get_time();
+
+		OMP_PARALLEL
+		{
+			OMP_FOR
+			for (int i = 0; i < int(sigma_s.size()); ++i)
+			{
+				double response = coeff * sigma_s.at(i);
+				double value = 2 / (1 + exp(-response)) - 1;
+				sigma_s.at(i) = original_sigmas * (k * value + (1 - k));
+				sigma_r.at(i) = original_sigmar * (k * value + (1 - k));
+			}
+		}
+		
+		Timer::EventID end = timer.get_time();
+
+		//Timer::EventID endend = timer.get_time();
+		//std::cout << "USE OMP: " << timer.elapsed_time(start, end) << " secs" << std::endl;
+		std::cout << "init Total: " << timer.elapsed_time(start_init, end) << " secs" << std::endl;
+		std::cout << "RTV total: " << timer.elapsed_time(start_RTV, start) << " secs" << std::endl;
+		
+		double max_ele = *max_element(sigma_s.begin(), sigma_s.end());
+		double min_ele = *min_element(sigma_s.begin(), sigma_s.end());
+		std::cout << "Response Max: " << max_ele / original_sigmas << "Response Min: " << min_ele << std::endl;
+		std::cout << "init Sigma Ave.Neighbor Size " << Ave_size / mesh.n_faces() << std::endl;
+	}
+
+	void getLaplacianNormal(TriMesh &mesh, const std::vector<TriMesh::Normal> &all_face_normal, std::vector<TriMesh::Normal> &gradient_normal);
+	
+	void getAllFaceNeighbor(TriMesh &mesh, std::vector<TriMesh::Point> &all_face_centriod, std::vector<double> &sigma_s, std::vector<double> &sigma_r, double original_sigmas, double original_sigmar,
+		std::vector<std::vector<double>> &all_face_neighbor_dist, std::vector<std::vector<int>> &all_face_neighbor_index)
+	{
+		initSigma(mesh, 0, sigma_s, sigma_r, original_sigmas, original_sigmar);
+		all_face_neighbor_dist.clear();
+		all_face_neighbor_index.clear();
+		all_face_neighbor_dist.resize(mesh.n_faces());
+		all_face_neighbor_index.resize(mesh.n_faces());
+		Timer timer;
+		Timer::EventID get_negibor = timer.get_time();
+		int size = 0;
+		//for (std::vector<TriMesh::Point>::iterator c_it = all_face_centriod.begin(); c_it!=all_face_centriod.end(); ++c_it)
+		OMP_PARALLEL
+		{
+			OMP_FOR
+			for (int i = 0; i < all_face_centriod.size(); i++)
+			{
+				std::vector<int> idxs; // all_face_neighbor_idx[index_i];
+				std::vector<double> dists; // all_face_neighbor_dist[index_i];
+				double curr_sigma_s = sigma_s[i];
+				double sqRad = pow(curr_sigma_s * 3, 2);
+				#pragma omp critical 
+				{
+					annSearchFaceNeighor(all_face_centriod[i], sqRad, idxs, dists);
+
+				}
+				all_face_neighbor_dist.at(i) = dists;
+				all_face_neighbor_index.at(i) = idxs;
+				size += idxs.size();
+			}
+		}
+		Timer::EventID end = timer.get_time();
+		
+		std::cout << "All Face Neighbor Occpy Dist " << size * sizeof(double) / (1024 * 1024.0) << "M" << std::endl;
+		std::cout << "All Face Neighbor Occpy Index " << size * sizeof(int) / (1024 * 1024.0) << "M" << std::endl;
+		std::cout << "Neighbor total: " << timer.elapsed_time(get_negibor, end) << " secs" << std::endl;
+	}
+
+	void getWeight(TriMesh &mesh, const std::vector<TriMesh::Normal> &u_normals, const std::vector<TriMesh::Normal> &g_normals, const std::vector<double>& all_face_area, std::vector<int>idxs, std::vector<double>dists, double guassian)
+	{
+		
+		double cov = getCovariance(idxs, dists, all_face_area, u_normals, guassian);
+		// compute rtv
+		TriMesh::Normal rtv = TriMesh::Normal(0.0, 0.0, 0.0);
+		double area_sum = 0.0;
+		double x = 0.0, y = 0.0, z = 0.0;
+		for (int i = 0; i < int(idxs.size()); i++)
+		{
+			double spatial_distance = dists[i];
+			double g = GaussianWeight(spatial_distance, guassian);
+			TriMesh::Normal no_jk = g_normals[idxs[i]];// -no_i;
+			rtv += g * no_jk;
+			x += g * pow(abs(no_jk[0]), 2);
+			y += g * pow(abs(no_jk[1]), 2);
+			z += g * pow(abs(no_jk[2]), 2);
+		}
+
+		double region_rtv = x + y + z;
+		
+		double response = 20 * (cov - region_rtv);
+		double weights = 1 / (1 + exp(-response));
+	}
 protected:
 	TriMesh mesh_;
 
@@ -176,7 +343,7 @@ protected:
 	void annSearchFaceNeighor(TriMesh::Point queryPt, double radius, std::vector<int>& idxs, std::vector<double>& dists);
 	
 	
-	ANNkd_tree*		kdTree_;
+	ANNkd_tree*	kdTree_;
 	ANNpointArray	dataPts_;
 
 private:
@@ -428,6 +595,9 @@ private:
 	void show_error_statistics(const Eigen::VectorXd &err_values, double bin_size, int n_bins)
 	{
 		int n_elems = err_values.size();
+
+
+		
 
 		Eigen::VectorXi error_bin_idx(n_elems);
 		OMP_PARALLEL

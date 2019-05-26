@@ -595,6 +595,7 @@ protected:
 			signals_.block(0, 0, signal_dim_, signal_count_) = init_signals;
 			signals_.row(signal_dim_).setOnes();
 		}
+		
 
 		Eigen::VectorXd neighbor_dists;
 		if(!get_neighborhood(param, neighboring_pairs_, neighbor_dists)){
@@ -605,6 +606,10 @@ protected:
 		// Pre-compute filtering weights, and rescale the lambda parameter
 
 		Eigen::Index n_neighbor_pairs = neighboring_pairs_.cols();
+
+		std::cout << "size of neighbor_pairs" << sizeof(neighboring_pairs_) << std::endl;
+		std::cout << "size of neighbor_pairs" << sizeof(n_neighbor_pairs) << std::endl;
+
 		if(n_neighbor_pairs <= 0){
 			return false;
 		}
